@@ -1037,7 +1037,7 @@ namespace Microsoft.Xna.Framework.Net
 			}
 			else
 			{
-				FNALoggerEXT.LogInfo(change.ToString());
+				System.Diagnostics.Debug.WriteLine(change.ToString());
 			}
 		}
 
@@ -1068,7 +1068,7 @@ namespace Microsoft.Xna.Framework.Net
 
 		private void OnP2PConnectFailed(P2PSessionConnectFail_t failure)
 		{
-			FNALoggerEXT.LogError(
+			System.Diagnostics.Debug.WriteLine(
 				"Error connecting to " + failure.m_steamIDRemote +
 				": " + ((EP2PSessionError) failure.m_eP2PSessionError).ToString()
 			);
@@ -1777,7 +1777,7 @@ namespace Microsoft.Xna.Framework.Net
 			}
 			else
 			{
-				FNALoggerEXT.LogError(lobby.m_eResult.ToString());
+				System.Diagnostics.Debug.WriteLine(lobby.m_eResult.ToString());
 			}
 			activeAction.IsCompleted = true;
 		}

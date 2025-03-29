@@ -24,20 +24,21 @@ namespace Microsoft.Xna.Framework.GamerServices
 		public static bool IsScreenSaverEnabled
 		{
 			// FIXME: Should we use SDL here? -flibit
+			// REPLY: No - dellis1972
 			get
 			{
-				return SDL2.SDL.SDL_IsScreenSaverEnabled() == SDL2.SDL.SDL_bool.SDL_TRUE;
+				return true;// SDL2.SDL.SDL_IsScreenSaverEnabled() == SDL2.SDL.SDL_bool.SDL_TRUE;
 			}
 			set
 			{
-				if (value)
-				{
-					SDL2.SDL.SDL_EnableScreenSaver();
-				}
-				else
-				{
-					SDL2.SDL.SDL_DisableScreenSaver();
-				}
+				// if (value)
+				// {
+				// 	SDL2.SDL.SDL_EnableScreenSaver();
+				// }
+				// else
+				// {
+				// 	SDL2.SDL.SDL_DisableScreenSaver();
+				// }
 			}
 		}
 
