@@ -1,8 +1,24 @@
-This is FNA.Steamworks, a reimplementation of the Xbox Live features in XNA4.
+## MonoGame.Steamworks
 
-Project Website: http://fna-xna.github.io/
+This is MonoGame.Steamworks.
+
+It is based on FNA.Steamworks, which is a reimplementation of the Xbox Live features in XNA4.
+
+Some changes
+
+* Upgrade to the .net SDK Style projects.
+* Switch to a .net 9 TargetFramework
+* Depend on the Steamworks.NET NuGet
+* Switch out FNA to MonoGame.
+
+Project Website: https://github.com/infinitespace-studios/MonoGame.Steamworks
 
 License
+
+-------
+MonoGame.Steamworks is released under the Microsoft Public License. See LICENSE for
+details.
+
 -------
 FNA.Steamworks is released under the Microsoft Public License. See LICENSE for
 details.
@@ -11,4 +27,4 @@ Found an issue?
 ---------------
 Issues and patches can be reported via GitHub:
 
-https://github.com/FNA-XNA/FNA.Steamworks/issues
+https://github.com/infinitespace-studios/MonoGame.Steamworks/issues
