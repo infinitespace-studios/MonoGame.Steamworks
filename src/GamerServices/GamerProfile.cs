@@ -13,6 +13,7 @@
 using System;
 using System.IO;
 using System.Globalization;
+using Steamworks;
 #endregion
 
 namespace Microsoft.Xna.Framework.GamerServices
@@ -98,6 +99,71 @@ namespace Microsoft.Xna.Framework.GamerServices
 
 		public Stream GetGamerPicture()
 		{
+			var id = SteamFriends.GetSmallFriendAvatar(SteamUser.GetSteamID());
+			uint ImageWidth;
+			uint ImageHeight;
+			bool bIsValid = SteamUtils.GetImageSize(id, out ImageWidth, out ImageHeight);
+
+			if (bIsValid)
+			{
+				byte[] image = new byte[ImageWidth * ImageHeight * 4];
+				byte[] flipped = new byte[ImageWidth * ImageHeight * 4];
+
+				bIsValid = SteamUtils.GetImageRGBA(id, image, (int)(ImageWidth * ImageHeight * 4));
+				if (bIsValid)
+				{
+					// convert RGBA -> BGRA
+					for (var i = 0; i < image.Length; i += 4)
+					{
+						var r = image[i];
+						var g = image[i + 1];
+						var b = image[i + 2];
+						var a = image[i + 3];
+						image[i] = b;
+						image[i + 1] = g;
+						image[i + 2] = r;
+						image[i + 3] = a;
+					}
+					// Flip Vertically
+					uint len = (uint)image.Length;
+					for (uint row = 0; row < ImageHeight; row++)
+					{
+						for (uint x = 0; x < ImageWidth; x++)
+						{
+							uint pixel = row * ImageWidth * 4 + x * 4;
+							uint destPixel = (ImageHeight - row - 1) * ImageWidth * 4 + x * 4;
+							flipped[destPixel] = image[pixel];
+							flipped[destPixel + 1] = image[pixel + 1];
+							flipped[destPixel + 2] = image[pixel + 2];
+							flipped[destPixel + 3] = image[pixel + 3];
+						}
+					}
+
+					var ms = new MemoryStream();
+					using var sw = new BinaryWriter(ms, encoding: System.Text.Encoding.UTF8, leaveOpen: true);
+					sw.Write('B');
+					sw.Write('M');
+					sw.Write((uint)flipped.Length + 14 + 40);
+					sw.Write((ushort)0);
+					sw.Write((ushort)0);
+					sw.Write((uint)54); // offset 32 bit
+					sw.Write((uint)40); // header size 
+					sw.Write(ImageWidth);
+					sw.Write(ImageHeight);
+					sw.Write((ushort)1);
+					sw.Write((ushort)32); // bpp
+					sw.Write((uint)0);  // compress
+					sw.Write((uint)0);// img sz
+					sw.Write((uint)0); //hr
+					sw.Write((uint)0); //vr
+					sw.Write((uint)0);//
+					sw.Write((uint)0);//
+					sw.Flush();
+					ms.Write(flipped, 0, flipped.Length);
+					ms.Position = 0;
+					return ms;
+				}
+			}
 			return null;
 		}
 
