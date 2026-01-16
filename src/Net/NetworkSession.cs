@@ -650,8 +650,13 @@ namespace Microsoft.Xna.Framework.Net
 							{
 								NetworkEvent receiveEvt = new NetworkEvent()
 								{
+									Type = NetworkEventType.PacketSend,
 									Gamer = evt.Sender,
-									Packet = evt.Packet
+									Sender = null,
+									Packet = evt.Packet,
+									Reliable = evt.Reliable,
+									State = NetworkSessionState.Playing,
+									Reason = NetworkSessionEndReason.ClientSignedOut
 								};
 								localRecipient.packetQueue.Enqueue(receiveEvt);
 							}

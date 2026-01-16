@@ -89,7 +89,10 @@ namespace Microsoft.Xna.Framework.Net
 			int len = Math.Min(packet.Packet.Length, data.Length);
 			Array.Copy(packet.Packet, 0, data, offset, len);
 
-			// Use Sender field if available (for local sessions), otherwise use Gamer field (for networked sessions)
+			// Use Sender field if available (for local sessions), otherwise use Gamer field (for networked sessions).
+			// Note: In both cases, the field points to the sender:
+			// - Local sessions: packet.Sender is explicitly set to the sender
+			// - Networked sessions: packet.Gamer is set to the sender (from Steam P2P ReadP2PPacket)
 			NetworkGamer senderGamer = packet.Sender ?? packet.Gamer;
 			
 			foreach (NetworkGamer gamer in Session.AllGamers)
@@ -118,7 +121,10 @@ namespace Microsoft.Xna.Framework.Net
 			data.BaseStream.Write(packet.Packet, 0, packet.Packet.Length);
 			data.BaseStream.Seek(0, System.IO.SeekOrigin.Begin);
 
-			// Use Sender field if available (for local sessions), otherwise use Gamer field (for networked sessions)
+			// Use Sender field if available (for local sessions), otherwise use Gamer field (for networked sessions).
+			// Note: In both cases, the field points to the sender:
+			// - Local sessions: packet.Sender is explicitly set to the sender
+			// - Networked sessions: packet.Gamer is set to the sender (from Steam P2P ReadP2PPacket)
 			NetworkGamer senderGamer = packet.Sender ?? packet.Gamer;
 			
 			foreach (NetworkGamer gamer in Session.AllGamers)
