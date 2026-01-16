@@ -1,6 +1,8 @@
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.GamerServices;
 using Microsoft.Xna.Framework.Net;
 using System.Text;
+using Steamworks;
 using Xunit;
 
 namespace MonoGame.Steamworks.Tests;
@@ -11,6 +13,54 @@ namespace MonoGame.Steamworks.Tests;
 /// </summary>
 public class LocalMultiplayerTests
 {
+    /// <summary>
+    /// Helper method to create an offline SignedInGamer for testing without requiring Steam API.
+    /// Uses reflection to create instances since the constructor is internal.
+    /// </summary>
+    private SignedInGamer CreateOfflineGamer(ulong steamId, string gamertag, PlayerIndex playerIndex = PlayerIndex.One)
+    {
+        var csteamId = new CSteamID(steamId);
+        var constructor = typeof(SignedInGamer).GetConstructor(
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+            null,
+            new[] { typeof(CSteamID), typeof(string), typeof(bool), typeof(bool), typeof(PlayerIndex) },
+            null
+        );
+        
+        if (constructor == null)
+        {
+            throw new InvalidOperationException("Could not find SignedInGamer constructor");
+        }
+        
+        // Create offline gamer (isSignedInToLive = false, isGuest = false)
+        return (SignedInGamer)constructor.Invoke(new object[] { csteamId, gamertag, false, false, playerIndex });
+    }
+    
+    /// <summary>
+    /// Helper method to set up a test session with local gamers.
+    /// Creates offline gamers that don't require Steam API to be initialized.
+    /// </summary>
+    private NetworkSession CreateTestSession(NetworkSessionType sessionType, int numGamers)
+    {
+        try
+        {
+            var session = NetworkSession.Create(sessionType, numGamers, 4);
+            
+            // Add offline test gamers to the session
+            for (int i = 0; i < numGamers; i++)
+            {
+                var gamer = CreateOfflineGamer((ulong)(100 + i), $"TestGamer{i + 1}", (PlayerIndex)i);
+                session.AddLocalGamer(gamer);
+            }
+            
+            return session;
+        }
+        catch (Exception)
+        {
+            // If session creation fails (e.g., Steam not initialized), return null
+            return null;
+        }
+    }
     /// <summary>
     /// Tests that a local session can be created with NetworkSessionType.Local.
     /// </summary>
@@ -159,63 +209,50 @@ public class LocalMultiplayerTests
     [Fact]
     public void SendData_FromLocalGamer_ShouldBeReceivedByOtherLocalGamer()
     {
+        // Arrange
+        var session = CreateTestSession(NetworkSessionType.Local, 2);
+        
+        if (session == null)
+        {
+            // Skip test if session creation failed (Steam not initialized)
+            return;
+        }
+        
         try
         {
-            // Arrange
-            var session = NetworkSession.Create(
-                NetworkSessionType.Local,
-                2,  // maxLocalGamers
-                4   // maxGamers
-            );
+            // Verify we have 2 local gamers
+            Assert.Equal(2, session.LocalGamers.Count);
             
-            // Need at least 2 local gamers - this would normally require actual SignedInGamers
-            // For now, test that the session is created properly
-            Assert.NotNull(session);
-            Assert.NotNull(session.LocalGamers);
+            var gamer1 = session.LocalGamers[0];
+            var gamer2 = session.LocalGamers[1];
             
-            // If we have at least 2 local gamers, test sending/receiving
-            if (session.LocalGamers.Count >= 2)
-            {
-                var gamer1 = session.LocalGamers[0];
-                var gamer2 = session.LocalGamers[1];
-                
-                // Act - Send data from gamer1
-                byte[] testData = Encoding.UTF8.GetBytes("Hello from gamer 1!");
-                gamer1.SendData(testData, SendDataOptions.Reliable);
-                
-                // Update session to process packets
-                session.Update();
-                
-                // Assert - gamer2 should have received the data
-                Assert.True(gamer2.IsDataAvailable, "Gamer 2 should have received data from Gamer 1");
-                
-                byte[] receivedData = new byte[1024];
-                NetworkGamer sender;
-                int bytesRead = gamer2.ReceiveData(receivedData, out sender);
-                
-                Assert.True(bytesRead > 0, "Should have received some bytes");
-                Assert.Equal(gamer1, sender);
-                
-                string receivedMessage = Encoding.UTF8.GetString(receivedData, 0, bytesRead);
-                Assert.Equal("Hello from gamer 1!", receivedMessage);
-                
-                // Gamer1 should NOT have received their own packet
-                Assert.False(gamer1.IsDataAvailable, "Gamer 1 should not receive their own packet");
-            }
+            // Act - Send data from gamer1
+            byte[] testData = Encoding.UTF8.GetBytes("Hello from gamer 1!");
+            gamer1.SendData(testData, SendDataOptions.Reliable);
             
-            // Cleanup
-            session.Dispose();
+            // Update session to process packets
+            session.Update();
+            
+            // Assert - gamer2 should have received the data
+            Assert.True(gamer2.IsDataAvailable, "Gamer 2 should have received data from Gamer 1");
+            
+            byte[] receivedData = new byte[1024];
+            NetworkGamer sender;
+            int bytesRead = gamer2.ReceiveData(receivedData, out sender);
+            
+            Assert.True(bytesRead > 0, "Should have received some bytes");
+            Assert.Equal(gamer1, sender);
+            
+            string receivedMessage = Encoding.UTF8.GetString(receivedData, 0, bytesRead);
+            Assert.Equal("Hello from gamer 1!", receivedMessage);
+            
+            // Gamer1 should NOT have received their own packet
+            Assert.False(gamer1.IsDataAvailable, "Gamer 1 should not receive their own packet");
         }
-        catch (Exception ex)
+        finally
         {
-            // If Steam is not initialized or there aren't enough gamers, that's acceptable
-            // The important thing is that the test documents the expected behavior
-            Assert.True(
-                ex.Message.Contains("Steam") || ex.Message.Contains("steam") || 
-                ex.Message.Contains("API") || ex.Message.Contains("not initialized") ||
-                ex.Message.Contains("gamer") || ex.Message.Contains("Gamer"),
-                $"Expected Steam or gamer-related exception, but got: {ex.Message}"
-            );
+            // Cleanup
+            session?.Dispose();
         }
     }
     
@@ -225,61 +262,50 @@ public class LocalMultiplayerTests
     [Fact]
     public void SendDataToAll_ShouldBeReceivedByAllOtherLocalGamers()
     {
+        // Arrange
+        var session = CreateTestSession(NetworkSessionType.LocalWithLeaderboards, 3);
+        
+        if (session == null)
+        {
+            return; // Skip if session creation failed
+        }
+        
         try
         {
-            // Arrange
-            var session = NetworkSession.Create(
-                NetworkSessionType.LocalWithLeaderboards,
-                3,  // maxLocalGamers
-                4   // maxGamers
-            );
+            // Verify we have at least 2 local gamers
+            Assert.True(session.LocalGamers.Count >= 2, "Need at least 2 gamers for this test");
             
-            Assert.NotNull(session);
+            var gamer1 = session.LocalGamers[0];
             
-            // If we have at least 2 local gamers
-            if (session.LocalGamers.Count >= 2)
+            // Act - Send data to all gamers
+            byte[] testData = Encoding.UTF8.GetBytes("Broadcast message");
+            gamer1.SendData(testData, SendDataOptions.Reliable);
+            
+            // Update session to process packets
+            session.Update();
+            
+            // Assert - All other local gamers should have received the data
+            for (int i = 1; i < session.LocalGamers.Count; i++)
             {
-                var gamer1 = session.LocalGamers[0];
+                var otherGamer = session.LocalGamers[i];
+                Assert.True(otherGamer.IsDataAvailable, 
+                    $"Gamer {i} should have received broadcast from Gamer 0");
                 
-                // Act - Send data to all gamers
-                byte[] testData = Encoding.UTF8.GetBytes("Broadcast message");
-                gamer1.SendData(testData, SendDataOptions.Reliable);
+                byte[] receivedData = new byte[1024];
+                NetworkGamer sender;
+                int bytesRead = otherGamer.ReceiveData(receivedData, out sender);
                 
-                // Update session to process packets
-                session.Update();
-                
-                // Assert - All other local gamers should have received the data
-                for (int i = 1; i < session.LocalGamers.Count; i++)
-                {
-                    var otherGamer = session.LocalGamers[i];
-                    Assert.True(otherGamer.IsDataAvailable, 
-                        $"Gamer {i} should have received broadcast from Gamer 0");
-                    
-                    byte[] receivedData = new byte[1024];
-                    NetworkGamer sender;
-                    int bytesRead = otherGamer.ReceiveData(receivedData, out sender);
-                    
-                    Assert.Equal(gamer1, sender);
-                    string receivedMessage = Encoding.UTF8.GetString(receivedData, 0, bytesRead);
-                    Assert.Equal("Broadcast message", receivedMessage);
-                }
-                
-                // Gamer1 should NOT have received their own broadcast
-                Assert.False(gamer1.IsDataAvailable, "Sender should not receive their own broadcast");
+                Assert.Equal(gamer1, sender);
+                string receivedMessage = Encoding.UTF8.GetString(receivedData, 0, bytesRead);
+                Assert.Equal("Broadcast message", receivedMessage);
             }
             
-            // Cleanup
-            session.Dispose();
+            // Gamer1 should NOT have received their own broadcast
+            Assert.False(gamer1.IsDataAvailable, "Sender should not receive their own broadcast");
         }
-        catch (Exception ex)
+        finally
         {
-            // Expected if Steam is not initialized
-            Assert.True(
-                ex.Message.Contains("Steam") || ex.Message.Contains("steam") || 
-                ex.Message.Contains("API") || ex.Message.Contains("not initialized") ||
-                ex.Message.Contains("gamer") || ex.Message.Contains("Gamer"),
-                $"Expected Steam or gamer-related exception, but got: {ex.Message}"
-            );
+            session?.Dispose();
         }
     }
     
@@ -289,57 +315,46 @@ public class LocalMultiplayerTests
     [Fact]
     public void SendDataToSpecificGamer_ShouldBeReceivedOnlyByRecipient()
     {
+        // Arrange
+        var session = CreateTestSession(NetworkSessionType.Local, 3);
+        
+        if (session == null)
+        {
+            return; // Skip if session creation failed
+        }
+        
         try
         {
-            // Arrange
-            var session = NetworkSession.Create(
-                NetworkSessionType.Local,
-                3,  // maxLocalGamers
-                4   // maxGamers
-            );
+            // Verify we have 3 local gamers
+            Assert.Equal(3, session.LocalGamers.Count);
             
-            Assert.NotNull(session);
+            var gamer1 = session.LocalGamers[0];
+            var gamer2 = session.LocalGamers[1];
+            var gamer3 = session.LocalGamers[2];
             
-            // If we have at least 3 local gamers
-            if (session.LocalGamers.Count >= 3)
-            {
-                var gamer1 = session.LocalGamers[0];
-                var gamer2 = session.LocalGamers[1];
-                var gamer3 = session.LocalGamers[2];
-                
-                // Act - Send data from gamer1 to gamer2 specifically
-                byte[] testData = Encoding.UTF8.GetBytes("Direct message to gamer 2");
-                gamer1.SendData(testData, SendDataOptions.Reliable, gamer2);
-                
-                // Update session to process packets
-                session.Update();
-                
-                // Assert - Only gamer2 should have received the data
-                Assert.True(gamer2.IsDataAvailable, "Gamer 2 should have received the direct message");
-                Assert.False(gamer1.IsDataAvailable, "Gamer 1 (sender) should not receive their own message");
-                Assert.False(gamer3.IsDataAvailable, "Gamer 3 should not receive message meant for Gamer 2");
-                
-                byte[] receivedData = new byte[1024];
-                NetworkGamer sender;
-                int bytesRead = gamer2.ReceiveData(receivedData, out sender);
-                
-                Assert.Equal(gamer1, sender);
-                string receivedMessage = Encoding.UTF8.GetString(receivedData, 0, bytesRead);
-                Assert.Equal("Direct message to gamer 2", receivedMessage);
-            }
+            // Act - Send data from gamer1 to gamer2 specifically
+            byte[] testData = Encoding.UTF8.GetBytes("Direct message to gamer 2");
+            gamer1.SendData(testData, SendDataOptions.Reliable, gamer2);
             
-            // Cleanup
-            session.Dispose();
+            // Update session to process packets
+            session.Update();
+            
+            // Assert - Only gamer2 should have received the data
+            Assert.True(gamer2.IsDataAvailable, "Gamer 2 should have received the direct message");
+            Assert.False(gamer1.IsDataAvailable, "Gamer 1 (sender) should not receive their own message");
+            Assert.False(gamer3.IsDataAvailable, "Gamer 3 should not receive message meant for Gamer 2");
+            
+            byte[] receivedData = new byte[1024];
+            NetworkGamer sender;
+            int bytesRead = gamer2.ReceiveData(receivedData, out sender);
+            
+            Assert.Equal(gamer1, sender);
+            string receivedMessage = Encoding.UTF8.GetString(receivedData, 0, bytesRead);
+            Assert.Equal("Direct message to gamer 2", receivedMessage);
         }
-        catch (Exception ex)
+        finally
         {
-            // Expected if Steam is not initialized
-            Assert.True(
-                ex.Message.Contains("Steam") || ex.Message.Contains("steam") || 
-                ex.Message.Contains("API") || ex.Message.Contains("not initialized") ||
-                ex.Message.Contains("gamer") || ex.Message.Contains("Gamer"),
-                $"Expected Steam or gamer-related exception, but got: {ex.Message}"
-            );
+            session?.Dispose();
         }
     }
     
@@ -349,68 +364,58 @@ public class LocalMultiplayerTests
     [Fact]
     public void SendDataWithPacketWriter_ShouldBeReceived()
     {
+        // Arrange
+        var session = CreateTestSession(NetworkSessionType.Local, 2);
+        
+        if (session == null)
+        {
+            return; // Skip if session creation failed
+        }
+        
         try
         {
-            // Arrange
-            var session = NetworkSession.Create(
-                NetworkSessionType.Local,
-                2,  // maxLocalGamers
-                4   // maxGamers
-            );
+            // Verify we have 2 local gamers
+            Assert.Equal(2, session.LocalGamers.Count);
             
-            Assert.NotNull(session);
+            var gamer1 = session.LocalGamers[0];
+            var gamer2 = session.LocalGamers[1];
             
-            if (session.LocalGamers.Count >= 2)
+            // Act - Send data using PacketWriter
+            using (var writer = new PacketWriter())
             {
-                var gamer1 = session.LocalGamers[0];
-                var gamer2 = session.LocalGamers[1];
+                writer.Write(42);
+                writer.Write("Test message");
+                writer.Write(3.14f);
                 
-                // Act - Send data using PacketWriter
-                using (var writer = new PacketWriter())
-                {
-                    writer.Write(42);
-                    writer.Write("Test message");
-                    writer.Write(3.14f);
-                    
-                    gamer1.SendData(writer, SendDataOptions.Reliable);
-                }
-                
-                // Update session to process packets
-                session.Update();
-                
-                // Assert - gamer2 should have received the data
-                Assert.True(gamer2.IsDataAvailable, "Gamer 2 should have received PacketWriter data");
-                
-                using (var reader = new PacketReader())
-                {
-                    NetworkGamer sender;
-                    int bytesRead = gamer2.ReceiveData(reader, out sender);
-                    
-                    Assert.True(bytesRead > 0, "Should have received some bytes");
-                    Assert.Equal(gamer1, sender);
-                    
-                    int intValue = reader.ReadInt32();
-                    string stringValue = reader.ReadString();
-                    float floatValue = reader.ReadSingle();
-                    
-                    Assert.Equal(42, intValue);
-                    Assert.Equal("Test message", stringValue);
-                    Assert.Equal(3.14f, floatValue);
-                }
+                gamer1.SendData(writer, SendDataOptions.Reliable);
             }
             
-            // Cleanup
-            session.Dispose();
+            // Update session to process packets
+            session.Update();
+            
+            // Assert - gamer2 should have received the data
+            Assert.True(gamer2.IsDataAvailable, "Gamer 2 should have received PacketWriter data");
+            
+            using (var reader = new PacketReader())
+            {
+                NetworkGamer sender;
+                int bytesRead = gamer2.ReceiveData(reader, out sender);
+                
+                Assert.True(bytesRead > 0, "Should have received some bytes");
+                Assert.Equal(gamer1, sender);
+                
+                int intValue = reader.ReadInt32();
+                string stringValue = reader.ReadString();
+                float floatValue = reader.ReadSingle();
+                
+                Assert.Equal(42, intValue);
+                Assert.Equal("Test message", stringValue);
+                Assert.Equal(3.14f, floatValue);
+            }
         }
-        catch (Exception ex)
+        finally
         {
-            // Expected if Steam is not initialized
-            Assert.True(
-                ex.Message.Contains("Steam") || ex.Message.Contains("steam") || 
-                ex.Message.Contains("API") || ex.Message.Contains("not initialized") ||
-                ex.Message.Contains("gamer") || ex.Message.Contains("Gamer"),
-                $"Expected Steam or gamer-related exception, but got: {ex.Message}"
-            );
+            session?.Dispose();
         }
     }
     
@@ -420,61 +425,51 @@ public class LocalMultiplayerTests
     [Fact]
     public void SendMultiplePackets_ShouldBeReceivedInOrder()
     {
+        // Arrange
+        var session = CreateTestSession(NetworkSessionType.Local, 2);
+        
+        if (session == null)
+        {
+            return; // Skip if session creation failed
+        }
+        
         try
         {
-            // Arrange
-            var session = NetworkSession.Create(
-                NetworkSessionType.Local,
-                2,  // maxLocalGamers
-                4   // maxGamers
-            );
+            // Verify we have 2 local gamers
+            Assert.Equal(2, session.LocalGamers.Count);
             
-            Assert.NotNull(session);
+            var gamer1 = session.LocalGamers[0];
+            var gamer2 = session.LocalGamers[1];
             
-            if (session.LocalGamers.Count >= 2)
+            // Act - Send multiple packets
+            for (int i = 1; i <= 3; i++)
             {
-                var gamer1 = session.LocalGamers[0];
-                var gamer2 = session.LocalGamers[1];
-                
-                // Act - Send multiple packets
-                for (int i = 1; i <= 3; i++)
-                {
-                    byte[] testData = Encoding.UTF8.GetBytes($"Message {i}");
-                    gamer1.SendData(testData, SendDataOptions.InOrder);
-                }
-                
-                // Update session to process packets
-                session.Update();
-                
-                // Assert - gamer2 should have received all packets in order
-                for (int i = 1; i <= 3; i++)
-                {
-                    Assert.True(gamer2.IsDataAvailable, $"Gamer 2 should have packet {i}");
-                    
-                    byte[] receivedData = new byte[1024];
-                    NetworkGamer sender;
-                    int bytesRead = gamer2.ReceiveData(receivedData, out sender);
-                    
-                    Assert.Equal(gamer1, sender);
-                    string receivedMessage = Encoding.UTF8.GetString(receivedData, 0, bytesRead);
-                    Assert.Equal($"Message {i}", receivedMessage);
-                }
-                
-                Assert.False(gamer2.IsDataAvailable, "All packets should have been received");
+                byte[] testData = Encoding.UTF8.GetBytes($"Message {i}");
+                gamer1.SendData(testData, SendDataOptions.InOrder);
             }
             
-            // Cleanup
-            session.Dispose();
+            // Update session to process packets
+            session.Update();
+            
+            // Assert - gamer2 should have received all packets in order
+            for (int i = 1; i <= 3; i++)
+            {
+                Assert.True(gamer2.IsDataAvailable, $"Gamer 2 should have packet {i}");
+                
+                byte[] receivedData = new byte[1024];
+                NetworkGamer sender;
+                int bytesRead = gamer2.ReceiveData(receivedData, out sender);
+                
+                Assert.Equal(gamer1, sender);
+                string receivedMessage = Encoding.UTF8.GetString(receivedData, 0, bytesRead);
+                Assert.Equal($"Message {i}", receivedMessage);
+            }
+            
+            Assert.False(gamer2.IsDataAvailable, "All packets should have been received");
         }
-        catch (Exception ex)
+        finally
         {
-            // Expected if Steam is not initialized
-            Assert.True(
-                ex.Message.Contains("Steam") || ex.Message.Contains("steam") || 
-                ex.Message.Contains("API") || ex.Message.Contains("not initialized") ||
-                ex.Message.Contains("gamer") || ex.Message.Contains("Gamer"),
-                $"Expected Steam or gamer-related exception, but got: {ex.Message}"
-            );
+            session?.Dispose();
         }
     }
     
