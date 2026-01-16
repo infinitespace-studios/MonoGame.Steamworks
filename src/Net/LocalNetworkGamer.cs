@@ -86,7 +86,7 @@ namespace Microsoft.Xna.Framework.Net
 			}
 
 			NetworkSession.NetworkEvent packet = packetQueue.Dequeue();
-			int len = Math.Min(packet.Packet.Length, data.Length);
+			int len = Math.Min(packet.Packet.Length, data.Length - offset);
 			Array.Copy(packet.Packet, 0, data, offset, len);
 
 			// Use Sender field if available (for local sessions), otherwise use Gamer field (for networked sessions).

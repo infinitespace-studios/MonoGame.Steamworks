@@ -651,8 +651,8 @@ namespace Microsoft.Xna.Framework.Net
 								NetworkEvent receiveEvt = new NetworkEvent()
 								{
 									Type = NetworkEventType.PacketSend,
-									Gamer = evt.Sender,
-									Sender = null,
+									Gamer = evt.Gamer,
+									Sender = evt.Sender,
 									Packet = evt.Packet,
 									Reliable = evt.Reliable,
 									State = default(NetworkSessionState),
