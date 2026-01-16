@@ -27,3 +27,12 @@ jobs:
     
     - name: Build
       run: dotnet build src/MonoGame.Steamworks.csproj --configuration Release --no-restore
+    
+    - name: Restore test dependencies
+      run: dotnet restore tests/MonoGame.Steamworks.Tests.csproj
+    
+    - name: Build tests
+      run: dotnet build tests/MonoGame.Steamworks.Tests.csproj --configuration Release --no-restore
+    
+    - name: Run tests
+      run: dotnet test tests/MonoGame.Steamworks.Tests.csproj --configuration Release --no-build --verbosity normal
