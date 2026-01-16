@@ -655,8 +655,8 @@ namespace Microsoft.Xna.Framework.Net
 									Sender = null,
 									Packet = evt.Packet,
 									Reliable = evt.Reliable,
-									State = NetworkSessionState.Playing,
-									Reason = NetworkSessionEndReason.ClientSignedOut
+									State = default(NetworkSessionState),
+									Reason = default(NetworkSessionEndReason)
 								};
 								localRecipient.packetQueue.Enqueue(receiveEvt);
 							}
@@ -767,7 +767,13 @@ namespace Microsoft.Xna.Framework.Net
 					CSteamID id;
 					NetworkEvent evt = new NetworkEvent()
 					{
-						Packet = new byte[packetSize]
+						Type = default(NetworkEventType),
+						Gamer = null,
+						Sender = null,
+						Packet = new byte[packetSize],
+						Reliable = default(SendDataOptions),
+						State = default(NetworkSessionState),
+						Reason = default(NetworkSessionEndReason)
 					};
 					SteamNetworking.ReadP2PPacket(
 						evt.Packet,
