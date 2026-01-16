@@ -46,6 +46,7 @@ namespace Microsoft.Xna.Framework.Net
 			public NetworkEventType Type;
 
 			public NetworkGamer Gamer;
+			public NetworkGamer Sender;
 			public byte[] Packet;
 			public SendDataOptions Reliable;
 			public NetworkSessionState State;
@@ -638,13 +639,35 @@ namespace Microsoft.Xna.Framework.Net
 
 				if (evt.Type == NetworkEventType.PacketSend)
 				{
-					SteamNetworking.SendP2PPacket(
-						evt.Gamer.steamID,
-						evt.Packet,
-						(uint) evt.Packet.Length,
-						SWSendType[(int) evt.Reliable],
-						0
-					);
+					// For local sessions, deliver packets directly without using Steam P2P
+					if (IsLocalSession())
+					{
+						// Only deliver to local gamers (sender should not receive their own packet)
+						if (evt.Gamer.IsLocal && evt.Gamer != evt.Sender)
+						{
+							LocalNetworkGamer localRecipient = evt.Gamer as LocalNetworkGamer;
+							if (localRecipient != null)
+							{
+								NetworkEvent receiveEvt = new NetworkEvent()
+								{
+									Gamer = evt.Sender,
+									Packet = evt.Packet
+								};
+								localRecipient.packetQueue.Enqueue(receiveEvt);
+							}
+						}
+					}
+					else
+					{
+						// Use Steam P2P for networked sessions
+						SteamNetworking.SendP2PPacket(
+							evt.Gamer.steamID,
+							evt.Packet,
+							(uint) evt.Packet.Length,
+							SWSendType[(int) evt.Reliable],
+							0
+						);
+					}
 				}
 				else if (evt.Type == NetworkEventType.GamerJoin)
 				{
@@ -730,33 +753,37 @@ namespace Microsoft.Xna.Framework.Net
 				}
 			}
 
-			uint packetSize;
-			while (SteamNetworking.IsP2PPacketAvailable(out packetSize))
+			// Only read from Steam P2P for networked sessions, not for local sessions
+			if (!IsLocalSession())
 			{
-				CSteamID id;
-				NetworkEvent evt = new NetworkEvent()
+				uint packetSize;
+				while (SteamNetworking.IsP2PPacketAvailable(out packetSize))
 				{
-					Packet = new byte[packetSize]
-				};
-				SteamNetworking.ReadP2PPacket(
-					evt.Packet,
-					(uint) evt.Packet.Length,
-					out packetSize,
-					out id
-				);
-				foreach (NetworkGamer gamer in AllGamers)
-				{
-					if (id == gamer.steamID)
+					CSteamID id;
+					NetworkEvent evt = new NetworkEvent()
 					{
-						evt.Gamer = gamer;
-						break;
+						Packet = new byte[packetSize]
+					};
+					SteamNetworking.ReadP2PPacket(
+						evt.Packet,
+						(uint) evt.Packet.Length,
+						out packetSize,
+						out id
+					);
+					foreach (NetworkGamer gamer in AllGamers)
+					{
+						if (id == gamer.steamID)
+						{
+							evt.Gamer = gamer;
+							break;
+						}
 					}
-				}
-				if (evt.Gamer != null) // FIXME: WHAT
-				{
-					foreach (LocalNetworkGamer gamer in LocalGamers)
+					if (evt.Gamer != null) // FIXME: WHAT
 					{
-						gamer.packetQueue.Enqueue(evt);
+						foreach (LocalNetworkGamer gamer in LocalGamers)
+						{
+							gamer.packetQueue.Enqueue(evt);
+						}
 					}
 				}
 			}
@@ -909,6 +936,12 @@ namespace Microsoft.Xna.Framework.Net
 					gamerIdCache[account].ToString()
 				);
 			}
+		}
+
+		private bool IsLocalSession()
+		{
+			return SessionType == NetworkSessionType.Local ||
+			       SessionType == NetworkSessionType.LocalWithLeaderboards;
 		}
 
 		private void OnLobbyUpdated(LobbyChatUpdate_t update)
