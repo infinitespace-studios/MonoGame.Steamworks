@@ -89,9 +89,12 @@ namespace Microsoft.Xna.Framework.Net
 			int len = Math.Min(packet.Packet.Length, data.Length);
 			Array.Copy(packet.Packet, 0, data, offset, len);
 
+			// Use Sender field if available (for local sessions), otherwise use Gamer field (for networked sessions)
+			NetworkGamer senderGamer = packet.Sender ?? packet.Gamer;
+			
 			foreach (NetworkGamer gamer in Session.AllGamers)
 			{
-				if (gamer.steamID == packet.Gamer.steamID)
+				if (gamer.steamID == senderGamer.steamID)
 				{
 					sender = gamer;
 					return len;
@@ -110,23 +113,25 @@ namespace Microsoft.Xna.Framework.Net
 				return 0;
 			}
 
-			uint len = 0;
 			NetworkSession.NetworkEvent packet = packetQueue.Dequeue();
 			data.BaseStream.Seek(0, System.IO.SeekOrigin.Begin);
 			data.BaseStream.Write(packet.Packet, 0, packet.Packet.Length);
 			data.BaseStream.Seek(0, System.IO.SeekOrigin.Begin);
 
+			// Use Sender field if available (for local sessions), otherwise use Gamer field (for networked sessions)
+			NetworkGamer senderGamer = packet.Sender ?? packet.Gamer;
+			
 			foreach (NetworkGamer gamer in Session.AllGamers)
 			{
-				if (gamer.steamID == packet.Gamer.steamID)
+				if (gamer.steamID == senderGamer.steamID)
 				{
 					sender = gamer;
-					return (int) len;
+					return packet.Packet.Length;
 				}
 			}
 
 			// We should never get here!
-			return (int) len;
+			return packet.Packet.Length;
 		}
 
 		public void SendData(byte[] data, SendDataOptions options)
