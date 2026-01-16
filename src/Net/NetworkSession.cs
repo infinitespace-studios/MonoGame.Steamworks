@@ -648,10 +648,11 @@ namespace Microsoft.Xna.Framework.Net
 							LocalNetworkGamer localRecipient = evt.Gamer as LocalNetworkGamer;
 							if (localRecipient != null)
 							{
+								// For consistency with networked sessions, set Gamer field to sender
 								NetworkEvent receiveEvt = new NetworkEvent()
 								{
 									Type = NetworkEventType.PacketSend,
-									Gamer = evt.Gamer,
+									Gamer = evt.Sender,
 									Sender = evt.Sender,
 									Packet = evt.Packet,
 									Reliable = evt.Reliable,
