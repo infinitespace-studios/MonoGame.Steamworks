@@ -1,0 +1,30 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+    
+    - name: Restore dependencies
+      run: dotnet restore src/MonoGame.Steamworks.csproj
+    
+    - name: Build
+      run: dotnet build src/MonoGame.Steamworks.csproj --configuration Release --no-restore
+    
+    - name: Test
+      run: dotnet test src/MonoGame.Steamworks.csproj --configuration Release --no-build --verbosity normal
